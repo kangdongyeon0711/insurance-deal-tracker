@@ -31,7 +31,8 @@ SYSTEM_PROMPT = """\
    표기하세요. 이때 tranche_position은 전체 딜 구조상 존재하는 트랜치 종류만 기술하고,
    특정 투자자(예: 앵커 투자자)가 그중 어디에 속하는지는 기사에 명시되지 않은 한 null로 두세요.
 8. 하나의 딜에서 여러 자산(다른 도시·다른 건물 등)을 한 번에 매입하는 "패키지 딜"인 경우,
-   target_asset.asset_name과 location에 해당 자산들을 모두 나열하고,
+   target_asset.assets 배열에 자산별로 별도 원소를 만들어 나열하고,
+   각 원소의 tenants에는 해당 자산에 대응하는 임차인만 기재하세요.
    confidence.notes에 "패키지 딜"임을 명시하세요.
 9. 기사에 나온 다른 숫자들로 계산 가능한 값(예: 대출액 ÷ 총투자액 = LTV)이라도,
    기사 원문에 해당 용어(LTV 등)가 직접 쓰이지 않았다면 해당 필드는 null로 두고,
@@ -56,10 +57,14 @@ FEW_SHOT_EXAMPLES = [
             },
             "target_asset": {
                 "category": "부동산",
-                "sub_type": None,
-                "location": None,
-                "asset_name": None,
-                "tenants": None,
+                "assets": [
+                    {
+                        "sub_type": None,
+                        "location": None,
+                        "asset_name": None,
+                        "tenants": None,
+                    }
+                ],
             },
             "deal_structure": {
                 "instrument": "지분투자",
@@ -104,10 +109,14 @@ FEW_SHOT_EXAMPLES = [
             },
             "target_asset": {
                 "category": "인프라",
-                "sub_type": "도로",
-                "location": "해외, 영국 런던",
-                "asset_name": "M25 고속도로 (사업시행사 코넥트플러스)",
-                "tenants": None,
+                "assets": [
+                    {
+                        "sub_type": "도로",
+                        "location": "해외, 영국 런던",
+                        "asset_name": "M25 고속도로 (사업시행사 코넥트플러스)",
+                        "tenants": None,
+                    }
+                ],
             },
             "deal_structure": {
                 "instrument": "지분투자",
@@ -158,15 +167,43 @@ FEW_SHOT_EXAMPLES = [
             },
             "target_asset": {
                 "category": "부동산",
-                "sub_type": "오피스",
-                "location": "해외, 파리·워싱턴·몬트리올 (3개국 패키지 매입)",
-                "asset_name": (
-                    "사노피 파리 사옥, 美 법무부 워싱턴 청사, 벨캐나다 몬트리올 사옥 (3건 패키지)"
-                ),
-                "tenants": [
-                    {"name": "사노피", "type": "제약사", "lease_years_remaining": None},
-                    {"name": "美 법무부", "type": "정부기관", "lease_years_remaining": None},
-                    {"name": "벨캐나다", "type": "통신사", "lease_years_remaining": None},
+                "assets": [
+                    {
+                        "sub_type": "오피스",
+                        "location": "해외, 프랑스 파리",
+                        "asset_name": "사노피 파리 사옥",
+                        "tenants": [
+                            {
+                                "name": "사노피",
+                                "type": "제약사",
+                                "lease_years_remaining": None,
+                            }
+                        ],
+                    },
+                    {
+                        "sub_type": "오피스",
+                        "location": "해외, 미국 워싱턴",
+                        "asset_name": "美 법무부 워싱턴 청사",
+                        "tenants": [
+                            {
+                                "name": "美 법무부",
+                                "type": "정부기관",
+                                "lease_years_remaining": None,
+                            }
+                        ],
+                    },
+                    {
+                        "sub_type": "오피스",
+                        "location": "해외, 캐나다 몬트리올",
+                        "asset_name": "벨캐나다 몬트리올 사옥",
+                        "tenants": [
+                            {
+                                "name": "벨캐나다",
+                                "type": "통신사",
+                                "lease_years_remaining": None,
+                            }
+                        ],
+                    },
                 ],
             },
             "deal_structure": {
@@ -188,11 +225,12 @@ FEW_SHOT_EXAMPLES = [
                     "① 참여 기관이 보험사·신협·증권사로 혼합되어 앵커인 한화생명 기준 '보험사'로 "
                     "표기함 (규칙 6). ② '선순위·후순위 구분 투자'가 지분 내 우선순위인지 대출 "
                     "트랜치인지 불명확해 instrument를 '혼합'으로, tranche_position은 null로 둠 "
-                    "(규칙 7). ③ 파리·워싱턴·몬트리올 3개 자산을 한 번에 매입하는 패키지 딜임 "
-                    "(규칙 8). ④ 대출 5000억/총액 1조원으로 LTV 50% 역산 가능하나 원문에 'LTV' "
-                    "표현이 없어 null 유지 (규칙 9). ⑤ 3개 건물의 임차인(사노피·美 법무부·벨캐나다)은 "
-                    "기사에 명시되어 tenants에 기재하되, 건물별 잔여 임차기간은 원문에 '10년 이상 "
-                    "잔존'이라는 전체 수치만 있고 건물별 수치가 없어 각 tenant의 "
+                    "(규칙 7). ③ 파리·워싱턴·몬트리올 3개 자산을 한 번에 매입하는 패키지 딜이라 "
+                    "target_asset.assets에 자산별로 별도 원소를 만들어 나열함 (규칙 8). ④ 대출 "
+                    "5000억/총액 1조원으로 LTV 50% 역산 가능하나 원문에 'LTV' 표현이 없어 null 유지 "
+                    "(규칙 9). ⑤ 각 건물의 임차인(사노피·美 법무부·벨캐나다)은 기사에 명시되어 해당 "
+                    "자산 원소의 tenants에 1:1로 매핑해 기재하되, 건물별 잔여 임차기간은 원문에 "
+                    "'10년 이상 잔존'이라는 전체 수치만 있고 건물별 수치가 없어 각 tenant의 "
                     "lease_years_remaining은 null로 둠 (규칙 2, 9)."
                 ),
             },
@@ -228,36 +266,63 @@ OUTPUT_SCHEMA = {
             "type": "object",
             "properties": {
                 "category": {"type": "string", "enum": ["부동산", "인프라"]},
-                "sub_type": {
-                    "type": ["string", "null"],
-                    "description": "예: 오피스, 물류센터, 데이터센터, 발전소, 도로 등",
-                },
-                "location": {
-                    "type": ["string", "null"],
-                    "description": "국내/해외, 도시명",
-                },
-                "asset_name": {"type": ["string", "null"]},
-                "tenants": {
-                    "type": ["array", "null"],
+                "assets": {
+                    "type": "array",
                     "description": (
-                        "임차인 정보가 기사에 없거나 해당 딜에 임차인 개념이 없으면 null"
+                        "매입 대상 자산 목록. 단일 자산 딜이면 원소 1개, 패키지 딜이면 "
+                        "자산별로 별도 원소를 넣는다."
                     ),
                     "items": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string"},
-                            "type": {
+                            "sub_type": {
                                 "type": ["string", "null"],
-                                "enum": ["제약사", "정부기관", "통신사", "기타", None],
+                                "description": "예: 오피스, 물류센터, 데이터센터, 발전소, 도로 등",
                             },
-                            "lease_years_remaining": {"type": ["number", "null"]},
+                            "location": {
+                                "type": ["string", "null"],
+                                "description": "국내/해외, 도시명",
+                            },
+                            "asset_name": {"type": ["string", "null"]},
+                            "tenants": {
+                                "type": ["array", "null"],
+                                "description": (
+                                    "이 자산의 임차인 정보가 기사에 없거나 해당 딜에 "
+                                    "임차인 개념이 없으면 null"
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "type": {
+                                            "type": ["string", "null"],
+                                            "enum": [
+                                                "제약사",
+                                                "정부기관",
+                                                "통신사",
+                                                "기타",
+                                                None,
+                                            ],
+                                        },
+                                        "lease_years_remaining": {
+                                            "type": ["number", "null"]
+                                        },
+                                    },
+                                    "required": [
+                                        "name",
+                                        "type",
+                                        "lease_years_remaining",
+                                    ],
+                                    "additionalProperties": False,
+                                },
+                            },
                         },
-                        "required": ["name", "type", "lease_years_remaining"],
+                        "required": ["sub_type", "location", "asset_name", "tenants"],
                         "additionalProperties": False,
                     },
                 },
             },
-            "required": ["category", "sub_type", "location", "asset_name", "tenants"],
+            "required": ["category", "assets"],
             "additionalProperties": False,
         },
         "deal_structure": {
