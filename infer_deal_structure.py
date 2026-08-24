@@ -46,6 +46,13 @@ SYSTEM_PROMPT = """\
     있던 지분과 이번 거래분을 합산한 최종 보유 지분율이 기사에 함께 언급되면,
     ownership_pct에는 이번 거래분만 기재하고 최종 보유율은 confidence.notes에
     별도로 명시하세요.
+12. 기사가 딜의 최초 설계가 아니라 딜 이후의 상태 변화(연체, 채무불이행, 손실,
+    채권 매각, 만기 도과 등)를 다루는 경우, deal_status 필드를 반드시 채우세요.
+    이때 deal_structure와 return_structure는 원 딜 조건(대출 원금, 만기 등
+    기사에 나온 만큼)을 그대로 기재하고, 상태 변화 관련 서술(왜 손실이
+    발생했는지, 현재 어떤 절차가 진행 중인지)은 deal_status.event_summary에
+    담으세요. 딜의 최초 설계만 다루는 일반적인 기사는 deal_status.current_state를
+    "정상"으로 두고 event_summary는 null로 두세요.
 """
 
 # "## 3. Few-shot 예시" 섹션 — 각 예시를 실제 user/assistant 대화 턴으로 만들어
@@ -86,6 +93,11 @@ FEW_SHOT_EXAMPLES = [
                 "type": "혼합",
                 "expected_return_pct": None,
                 "maturity": None,
+            },
+            "deal_status": {
+                "current_state": "정상",
+                "event_summary": None,
+                "realized_loss": None,
             },
             "confidence": {
                 "overall": "medium",
@@ -138,6 +150,11 @@ FEW_SHOT_EXAMPLES = [
                 "type": "배당형",
                 "expected_return_pct": 6,
                 "maturity": "22년 (2039년까지 운영)",
+            },
+            "deal_status": {
+                "current_state": "정상",
+                "event_summary": None,
+                "realized_loss": None,
             },
             "confidence": {
                 "overall": "medium",
@@ -227,6 +244,11 @@ FEW_SHOT_EXAMPLES = [
                 "expected_return_pct": 7.5,
                 "maturity": "임차 기간 10년 이상 잔존 (펀드 만기 자체는 기사에 명시 안 됨)",
             },
+            "deal_status": {
+                "current_state": "정상",
+                "event_summary": None,
+                "realized_loss": None,
+            },
             "confidence": {
                 "overall": "low",
                 "notes": (
@@ -285,6 +307,11 @@ FEW_SHOT_EXAMPLES = [
                 "expected_return_pct": None,
                 "maturity": None,
             },
+            "deal_status": {
+                "current_state": "정상",
+                "event_summary": None,
+                "realized_loss": None,
+            },
             "confidence": {
                 "overall": "low",
                 "notes": (
@@ -306,6 +333,80 @@ FEW_SHOT_EXAMPLES = [
             ),
         },
     },
+    {
+        "article": (
+            "기사 요지: 우리·NH농협·수협은행과 미래에셋·NH투자증권이 한강자산운용을 통해\n"
+            "2019년 뉴욕 브루클린 '500 메트로폴리탄' 개발사업에 1억3300만달러(약 1865억원)\n"
+            "규모 대출 펀드를 조성했으나, 차주가 만기(2023년 6월) 이후에도 상환하지 않아\n"
+            "기한이익상실(EOD)이 발생. 국내 기관들은 소송 대신 원금 손실을 감수하고\n"
+            "해당 대출 채권을 제3자에 매각하기로 함."
+        ),
+        "output": {
+            "investor": {
+                "name": (
+                    "우리은행·NH농협은행·수협은행·미래에셋증권·NH투자증권 "
+                    "(한강자산운용 조성 펀드 출자)"
+                ),
+                "type": "은행",
+                "is_direct": False,
+            },
+            "target_asset": {
+                "category": "부동산",
+                "assets": [
+                    {
+                        "sub_type": "호텔·주거복합",
+                        "location": "해외, 미국 뉴욕 브루클린 윌리엄스버그",
+                        "asset_name": "500 메트로폴리탄",
+                        "tenants": None,
+                    }
+                ],
+            },
+            "deal_structure": {
+                "instrument": "혼합",
+                "vehicle": "펀드",
+                "ownership_pct": None,
+                "loan_amount": 1865,
+                "ltv_pct": None,
+                "tranche_position": None,
+            },
+            "return_structure": {
+                "type": "이자수익형",
+                "expected_return_pct": None,
+                "maturity": "만기 2023년 6월 (경과됨, EOD 발생)",
+            },
+            "deal_status": {
+                "current_state": "매각처분",
+                "event_summary": (
+                    "차주가 만기(2023년 6월) 이후 리파이낸싱 등을 통한 채무 상환 의지를 보이지 "
+                    "않아 기한이익상실(EOD)이 발생. 국내 출자 기관들은 소송을 통한 채권 회수 "
+                    "대신, 원금에 미치지 못하는 가격에라도 해당 대출 채권을 제3자에 매각해 "
+                    "거래를 종결하는 방식을 선택함."
+                ),
+                "realized_loss": None,
+            },
+            "confidence": {
+                "overall": "low",
+                "notes": (
+                    "① instrument enum(선순위대출/후순위·메자닌대출)이 강제 선택 항목인데 "
+                    "기사에 트랜치 구분이 없어 '혼합'으로 처리함. ② investor.type enum에 "
+                    "'은행'을 추가해 사용함 (규칙: 실제 출자자 구성과 맞지 않는 카테고리를 억지로 "
+                    "선택하지 않음). 각 기관별 출자 비중이 기사에 없어 앵커 기준 판단(규칙 6)도 "
+                    "적용 불가. ③ 이 기사는 딜의 최초 설계가 아니라 최초 대출 실행(2019년) 이후 "
+                    "발생한 채무불이행과 손실 국면을 다루므로 deal_status를 채움 (규칙 12). "
+                    "deal_structure.loan_amount는 2019년 최초 대출 원금(1865억원)을 기재하고, "
+                    "연체이자 포함 회수해야 할 금액(약 1억7000만달러)이나 실제 매각가는 기사에 "
+                    "구체 수치가 없어 deal_status.realized_loss는 null로 둠. ④ target_asset."
+                    "sub_type에 '호텔·주거복합'을 사용함 — 기존 enum(오피스/물류센터/데이터센터/"
+                    "발전소/도로)에 해당 사항이 없어 새 카테고리로 기재함."
+                ),
+            },
+            "source_evidence": (
+                "한강자산운용이 조성한 1억3300만달러 규모 대출 펀드에서 손실이 발생할 것으로 "
+                "보이며, 차주의 기한이익상실(EOD)로 만기가 지났음에도 상환이 안 돼 국내 기관들이 "
+                "원금 손실을 감수하고 채권을 제3자에 매각하기로 했다고 보도됨."
+            ),
+        },
+    },
 ]
 
 OUTPUT_SCHEMA = {
@@ -317,7 +418,7 @@ OUTPUT_SCHEMA = {
                 "name": {"type": "string"},
                 "type": {
                     "type": "string",
-                    "enum": ["보험사", "자산운용사", "SPC/PFV", "기타"],
+                    "enum": ["보험사", "은행", "자산운용사", "SPC/PFV", "기타"],
                 },
                 "is_direct": {
                     "type": "boolean",
@@ -342,7 +443,10 @@ OUTPUT_SCHEMA = {
                         "properties": {
                             "sub_type": {
                                 "type": ["string", "null"],
-                                "description": "예: 오피스, 물류센터, 데이터센터, 발전소, 도로 등",
+                                "description": (
+                                    "예: 오피스, 물류센터, 데이터센터, 발전소, 도로, "
+                                    "호텔·주거복합 등"
+                                ),
                             },
                             "location": {
                                 "type": ["string", "null"],
@@ -438,6 +542,25 @@ OUTPUT_SCHEMA = {
             "required": ["type", "expected_return_pct", "maturity"],
             "additionalProperties": False,
         },
+        "deal_status": {
+            "type": "object",
+            "properties": {
+                "current_state": {
+                    "type": "string",
+                    "enum": ["정상", "연체", "채무불이행(EOD)", "매각처분", "만기연장", "회수완료"],
+                },
+                "event_summary": {
+                    "type": ["string", "null"],
+                    "description": "무슨 일이 있었는지 요약",
+                },
+                "realized_loss": {
+                    "type": ["number", "null"],
+                    "description": "단위: 억원. 확정/예상 손실액",
+                },
+            },
+            "required": ["current_state", "event_summary", "realized_loss"],
+            "additionalProperties": False,
+        },
         "confidence": {
             "type": "object",
             "properties": {
@@ -460,6 +583,7 @@ OUTPUT_SCHEMA = {
         "target_asset",
         "deal_structure",
         "return_structure",
+        "deal_status",
         "confidence",
         "source_evidence",
     ],
