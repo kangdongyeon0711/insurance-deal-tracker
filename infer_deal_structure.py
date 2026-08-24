@@ -8,7 +8,7 @@ import sys
 
 import anthropic
 
-MODEL = "claude-opus-5"
+MODEL = "claude-sonnet-4-6"
 
 SYSTEM_PROMPT = """\
 당신은 국내/해외 보험사의 부동산 및 인프라 투자 기사를 읽고,
@@ -59,6 +59,7 @@ FEW_SHOT_EXAMPLES = [
                 "sub_type": None,
                 "location": None,
                 "asset_name": None,
+                "tenants": None,
             },
             "deal_structure": {
                 "instrument": "지분투자",
@@ -106,6 +107,7 @@ FEW_SHOT_EXAMPLES = [
                 "sub_type": "도로",
                 "location": "해외, 영국 런던",
                 "asset_name": "M25 고속도로 (사업시행사 코넥트플러스)",
+                "tenants": None,
             },
             "deal_structure": {
                 "instrument": "지분투자",
@@ -161,6 +163,11 @@ FEW_SHOT_EXAMPLES = [
                 "asset_name": (
                     "사노피 파리 사옥, 美 법무부 워싱턴 청사, 벨캐나다 몬트리올 사옥 (3건 패키지)"
                 ),
+                "tenants": [
+                    {"name": "사노피", "type": "제약사", "lease_years_remaining": None},
+                    {"name": "美 법무부", "type": "정부기관", "lease_years_remaining": None},
+                    {"name": "벨캐나다", "type": "통신사", "lease_years_remaining": None},
+                ],
             },
             "deal_structure": {
                 "instrument": "혼합",
@@ -183,7 +190,10 @@ FEW_SHOT_EXAMPLES = [
                     "트랜치인지 불명확해 instrument를 '혼합'으로, tranche_position은 null로 둠 "
                     "(규칙 7). ③ 파리·워싱턴·몬트리올 3개 자산을 한 번에 매입하는 패키지 딜임 "
                     "(규칙 8). ④ 대출 5000억/총액 1조원으로 LTV 50% 역산 가능하나 원문에 'LTV' "
-                    "표현이 없어 null 유지 (규칙 9)."
+                    "표현이 없어 null 유지 (규칙 9). ⑤ 3개 건물의 임차인(사노피·美 법무부·벨캐나다)은 "
+                    "기사에 명시되어 tenants에 기재하되, 건물별 잔여 임차기간은 원문에 '10년 이상 "
+                    "잔존'이라는 전체 수치만 있고 건물별 수치가 없어 각 tenant의 "
+                    "lease_years_remaining은 null로 둠 (규칙 2, 9)."
                 ),
             },
             "source_evidence": (
@@ -227,8 +237,27 @@ OUTPUT_SCHEMA = {
                     "description": "국내/해외, 도시명",
                 },
                 "asset_name": {"type": ["string", "null"]},
+                "tenants": {
+                    "type": ["array", "null"],
+                    "description": (
+                        "임차인 정보가 기사에 없거나 해당 딜에 임차인 개념이 없으면 null"
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "type": {
+                                "type": ["string", "null"],
+                                "enum": ["제약사", "정부기관", "통신사", "기타", None],
+                            },
+                            "lease_years_remaining": {"type": ["number", "null"]},
+                        },
+                        "required": ["name", "type", "lease_years_remaining"],
+                        "additionalProperties": False,
+                    },
+                },
             },
-            "required": ["category", "sub_type", "location", "asset_name"],
+            "required": ["category", "sub_type", "location", "asset_name", "tenants"],
             "additionalProperties": False,
         },
         "deal_structure": {
