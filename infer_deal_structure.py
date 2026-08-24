@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import pathlib
 import sys
 
 import anthropic
@@ -158,11 +159,39 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="기사 텍스트를 입력받아 보험사 부동산/인프라 투자 딜 구조를 JSON으로 추론합니다."
     )
-    parser.add_argument("article_text", help="분석할 기사 본문 텍스트")
+    parser.add_argument(
+        "article_text", nargs="?", help="분석할 기사 본문 텍스트 (--file과 함께 사용 불가)"
+    )
+    parser.add_argument(
+        "-f", "--file", help="기사 본문이 담긴 텍스트 파일 경로 (article_text 인자 대신 사용)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="API를 호출하지 않고 전송될 system 프롬프트, 모델, 기사 텍스트만 출력합니다",
+    )
     args = parser.parse_args()
 
+    if bool(args.article_text) == bool(args.file):
+        parser.error("article_text 인자와 --file 중 정확히 하나를 지정하세요.")
+
+    if args.file:
+        try:
+            article_text = pathlib.Path(args.file).read_text(encoding="utf-8")
+        except OSError as e:
+            print(f"파일을 읽을 수 없습니다: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        article_text = args.article_text
+
+    if args.dry_run:
+        print(f"[dry-run] model: {MODEL}")
+        print(f"[dry-run] system prompt:\n{SYSTEM_PROMPT}")
+        print(f"[dry-run] article_text ({len(article_text)}자):\n{article_text}")
+        return
+
     try:
-        result = infer_deal_structure(args.article_text)
+        result = infer_deal_structure(article_text)
     except anthropic.BadRequestError as e:
         print(f"잘못된 요청: {e.message}", file=sys.stderr)
         sys.exit(1)
