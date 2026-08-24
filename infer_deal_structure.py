@@ -2,6 +2,7 @@
 """보험사 부동산·인프라 투자 기사를 입력받아 딜 구조를 추론하고 JSON으로 출력한다."""
 
 import argparse
+import html
 import json
 import pathlib
 import sys
@@ -590,6 +591,217 @@ OUTPUT_SCHEMA = {
     "additionalProperties": False,
 }
 
+_DIAGRAM_STYLE = """
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 40px 24px;
+      background: #f6f7f8;
+      font-family: -apple-system, "Segoe UI", Pretendard, "Malgun Gothic", sans-serif;
+      color: #111315;
+    }
+    .diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 14px 20px;
+      text-align: center;
+      box-shadow: 0 1px 2px rgba(17, 19, 21, 0.12);
+    }
+    .card .label {
+      font-size: 12px;
+      opacity: 0.75;
+      margin-bottom: 2px;
+    }
+    .card .title {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .investor-card { background: #24313a; color: #ffffff; min-width: 220px; max-width: 480px; }
+    .vehicle-card { background: #4d5964; color: #ffffff; min-width: 180px; }
+    .asset-card { background: #afc5e0; color: #111315; min-width: 180px; max-width: 260px; }
+    .connector-v { width: 2px; height: 24px; background: #b1b8bd; }
+    .connector-h {
+      height: 2px;
+      background: #b1b8bd;
+      width: 100%;
+      max-width: 720px;
+    }
+    .fan {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+    .assets-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 28px;
+      width: 100%;
+      padding: 0 8px;
+      border-top: 2px solid #e0e3e5;
+      margin-top: 4px;
+    }
+    .asset-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 20px;
+    }
+    .asset-column > .connector-v { height: 20px; margin-bottom: 0; }
+    .tenants-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      max-width: 260px;
+      margin-top: 8px;
+    }
+    .tenant-chip {
+      background: #d9ef57;
+      color: #111315;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .status-badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 8px 20px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .status-badge.normal { background: #e0e3e5; color: #4d5964; }
+    .status-badge.alert { background: #f37321; color: #ffffff; }
+    .divider {
+      width: 100%;
+      max-width: 720px;
+      height: 1px;
+      background: #e0e3e5;
+      margin: 28px 0 4px;
+    }
+"""
+
+
+def _asset_card_html(asset: dict) -> str:
+    sub_type = asset.get("sub_type")
+    location = asset.get("location")
+    asset_name = asset.get("asset_name")
+    tenants = asset.get("tenants")
+
+    title = html.escape(asset_name or sub_type or "자산 미상")
+    detail_bits = [b for b in (sub_type, location) if b]
+    detail = html.escape(" · ".join(detail_bits)) if detail_bits else ""
+
+    card = f"""
+      <div class="asset-column">
+        <div class="connector-v"></div>
+        <div class="card asset-card">
+          <div class="label">{detail}</div>
+          <div class="title">{title}</div>
+        </div>"""
+
+    if tenants:
+        chips = "".join(
+            '<span class="tenant-chip" title="{title_attr}">{name}</span>'.format(
+                title_attr=html.escape(
+                    " · ".join(
+                        b
+                        for b in (
+                            t.get("type"),
+                            (
+                                f"잔여 {t['lease_years_remaining']}년"
+                                if t.get("lease_years_remaining") is not None
+                                else None
+                            ),
+                        )
+                        if b
+                    )
+                ),
+                name=html.escape(t.get("name") or "임차인"),
+            )
+            for t in tenants
+        )
+        card += f'\n        <div class="tenants-row">{chips}</div>'
+
+    card += "\n      </div>"
+    return card
+
+
+def render_diagram(result: dict) -> str:
+    """결과 JSON(investor -> vehicle -> assets -> tenants -> deal_status)을
+    세로 계층 구조의 HTML 관계도로 변환한다. 외부 라이브러리 없이 flexbox만 사용."""
+    investor = result.get("investor") or {}
+    deal_structure = result.get("deal_structure") or {}
+    target_asset = result.get("target_asset") or {}
+    assets = target_asset.get("assets") or []
+    deal_status = result.get("deal_status") or {}
+
+    investor_name = html.escape(investor.get("name") or "투자자 미상")
+    investor_sub_bits = [
+        b
+        for b in (
+            investor.get("type"),
+            "직접투자" if investor.get("is_direct") else "간접투자 (SPC/펀드)",
+        )
+        if b
+    ]
+    investor_sub = html.escape(" · ".join(investor_sub_bits))
+
+    vehicle = html.escape(deal_structure.get("vehicle") or "구조 미상")
+    instrument = html.escape(deal_structure.get("instrument") or "")
+
+    asset_columns = "".join(_asset_card_html(a) for a in assets)
+    fan_connector = '<div class="connector-h"></div>' if len(assets) > 1 else ""
+
+    current_state = deal_status.get("current_state") or "정상"
+    status_class = "normal" if current_state == "정상" else "alert"
+    event_summary = deal_status.get("event_summary")
+    status_title = f' title="{html.escape(event_summary)}"' if event_summary else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>딜 구조 관계도</title>
+<style>{_DIAGRAM_STYLE}</style>
+</head>
+<body>
+  <div class="diagram">
+    <div class="card investor-card">
+      <div class="label">{investor_sub}</div>
+      <div class="title">{investor_name}</div>
+    </div>
+    <div class="connector-v"></div>
+    <div class="card vehicle-card">
+      <div class="label">{instrument}</div>
+      <div class="title">{vehicle}</div>
+    </div>
+    <div class="connector-v"></div>
+    <div class="fan">
+      {fan_connector}
+      <div class="assets-row">
+        {asset_columns}
+      </div>
+    </div>
+    <div class="divider"></div>
+    <span class="status-badge {status_class}"{status_title}>{html.escape(current_state)}</span>
+  </div>
+</body>
+</html>
+"""
+
 
 def build_messages(article_text: str) -> list[dict]:
     """FEW_SHOT_EXAMPLES를 user/assistant 턴으로 펼치고 실제 기사를 마지막 user 턴으로 붙인다."""
@@ -660,6 +872,19 @@ def main() -> None:
         for i, message in enumerate(messages):
             print(f"--- messages[{i}] role={message['role']} ---")
             print(message["content"])
+
+        # render_diagram()을 API 호출 없이 검증하기 위해 기존 few-shot 예시 출력을
+        # mock JSON으로 재사용한다 (M25 = 자산 1개, 파리·워싱턴·몬트리올 = 자산 3개).
+        outputs_dir = pathlib.Path("outputs")
+        outputs_dir.mkdir(exist_ok=True)
+        mock_cases = [
+            ("dry_run_diagram_1asset.html", FEW_SHOT_EXAMPLES[1]["output"]),
+            ("dry_run_diagram_3assets.html", FEW_SHOT_EXAMPLES[2]["output"]),
+        ]
+        for filename, mock_result in mock_cases:
+            out_path = outputs_dir / filename
+            out_path.write_text(render_diagram(mock_result), encoding="utf-8")
+            print(f"[dry-run] render_diagram() mock 출력 저장: {out_path}")
         return
 
     try:
@@ -688,6 +913,12 @@ def main() -> None:
         sys.exit(1)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    outputs_dir = pathlib.Path("outputs")
+    outputs_dir.mkdir(exist_ok=True)
+    diagram_path = outputs_dir / "result.html"
+    diagram_path.write_text(render_diagram(result), encoding="utf-8")
+    print(f"관계도 저장: {diagram_path}", file=sys.stderr)
 
 
 if __name__ == "__main__":
